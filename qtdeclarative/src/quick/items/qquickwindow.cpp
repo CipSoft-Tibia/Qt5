@@ -863,9 +863,13 @@ void QQuickWindowPrivate::dirtyItem(QQuickItem *item)
 {
     Q_Q(QQuickWindow);
 
+    // This functionality is only needed when embedding foreign windows
+    // into the QML scene, and reduces render performance in a large, often changing scene
+    /*
     QQuickItemPrivate *itemPriv = QQuickItemPrivate::get(item);
     if (itemPriv->dirtyAttributes & QQuickItemPrivate::ChildrenStackingChanged)
         needsChildWindowStackingOrderUpdate = true;
+    */
 
     q->maybeUpdate();
 }
